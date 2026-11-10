@@ -399,26 +399,34 @@
   cursor: default;
 }
 
-.chat-send.is-busy {
-  opacity: 0.7;
-}
-
 .chat-send.is-busy .icon {
-  display: none;
-}
-
-.chat-send.is-busy::after {
-  content: '';
-  width: 15px;
-  height: 15px;
-  border: 2px solid oklch(0.19 0.02 70 / 0.3);
-  border-top-color: oklch(0.19 0.02 70);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+  width: 17px;
+  height: 17px;
 }
 
 .chat-input:disabled {
   opacity: 0.55;
+}
+
+.msg-think {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.msg-think summary {
+  color: var(--faint);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.msg-think-text {
+  margin-top: 6px;
+  padding-left: 10px;
+  border-left: 2px solid var(--line);
+  color: var(--dim);
+  font-size: 13px;
+  white-space: pre-wrap;
 }
 
 .msg:last-child {
@@ -427,12 +435,6 @@
 
 .msg-thinking .msg-body em {
   animation: thinkPulse 1.3s ease-in-out infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @keyframes msgIn {

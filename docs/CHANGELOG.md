@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.3 - 2026-11-10
+
+- Stop generation: while a reply is generating, the send button becomes a stop square — stopping aborts the request and keeps the partial reply (works streamed or not)
+- New setting: Show model thinking (Settings > General > Chat, on by default) — reasoning models (`reasoning_content` or `<think>` tags) get a collapsible thinking block, live while generating and saved with each reply
+- Backend page shows the installed llama.cpp version and the latest GitHub release; the button now reads Install / Update / Reinstall instead of always "Install llama.cpp"
+- Fixed cramped spacing between the theme list and the Text size section in Settings
+- Installer: settings in `~/.lmsuperapp/` survive updates (they live outside the install dir), and a desktop shortcut the user deleted is no longer recreated on update
+
 ## 0.2.2 - 2026-10-28
 
 - Backend port is now a setting (Settings > Backend > Launch parameters, default 8391) — llama-server no longer hardcodes 8391

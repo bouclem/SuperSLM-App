@@ -9,6 +9,7 @@ import type { ReadableStream } from 'node:stream/web';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import {
+  abortChat,
   chatCompletion,
   getBackendStatus,
   setIdleMinutes,
@@ -17,7 +18,7 @@ import {
   stopBackend,
   waitReady
 } from './llamacpp';
-import type { ChatMessage, SamplingParams } from './llamacpp';
+import type { ChatChunk, ChatMessage, SamplingParams } from './llamacpp';
 import type { LmSettings } from './settings';
 import { ensureStorage, loadSettings, patchSettings, THEME_BG } from './settings';
 
@@ -382,28 +383,35 @@ ipcMain.handle('backend:chat', async (event, messages: unknown, stream: unknown,
   const sender = event.sender;
   const onChunk =
     stream === true
-      ? (text: string): void => {
-          if (!sender.isDestroyed()) sender.send('chat:chunk', text);
+      ? (chunk: ChatChunk): void => {
+          if (!sender.isDestroyed()) sender.send('chat:chunk', chunk);
         }
       : undefined;
   chatInFlight += 1;
   try {
     const t0 = Date.now();
-    const { content, tokens } = await chatCompletion(msgs, onChunk, cleanSampling(sampling));
+    const { content, thinking, tokens, stopped } = await chatCompletion(
+      msgs,
+      onChunk,
+      cleanSampling(sampling)
+    );
     const secs = (Date.now() - t0) / 1000;
     const approx = tokens === undefined;
     const n = tokens ?? Math.max(1, Math.round(content.length / 4));
     const tokPerSec = secs > 0.05 ? Math.round((n / secs) * 10) / 10 : undefined;
-    return { content, tokPerSec, approx };
+    return { content, thinking, tokPerSec, approx, stopped };
   } finally {
     chatInFlight -= 1;
   }
 });
 
+ipcMain.handle('backend:chatStop', () => abortChat());
+
 const CHATS_DIR = (): string => path.join(homedir(), '.lmsuperapp', 'chats');
 
 interface StoredMessage extends ChatMessage {
   versions?: string[];
+  thinking?: (string | null)[];
   vi?: number;
   ts?: number;
   stats?: { tps?: number; approx?: boolean }[];
@@ -423,6 +431,13 @@ const cleanMsgs = (messages: unknown): StoredMessage[] =>
             ? {
                 versions: m.versions
                   .filter((v): v is string => typeof v === 'string')
+                  .slice(0, 10)
+              }
+            : {}),
+          ...(Array.isArray(m.thinking)
+            ? {
+                thinking: m.thinking
+                  .map((t) => (typeof t === 'string' ? t : null))
                   .slice(0, 10)
               }
             : {}),
@@ -512,6 +527,40 @@ ipcMain.handle('chats:load', async (_e, id: unknown) => {
 
 const execFileAsync = promisify(execFile);
 
+const BUILD_ASSET: Record<string, RegExp> = {
+  cpu: /bin-win-cpu-x64\.zip$/i,
+  vulkan: /bin-win-vulkan-x64\.zip$/i,
+  'cuda-12.4': /bin-win-cuda-12\.4-x64\.zip$/i,
+  'cuda-13.4': /bin-win-cuda-13\.4-x64\.zip$/i
+};
+
+interface LlamaRelease {
+  tag_name?: string;
+  assets?: { name: string; browser_download_url: string }[];
+}
+
+// newest release that ships a Windows build for the chosen backend build
+const findLlamaRelease = async (
+  build: string
+): Promise<{ tag: string; asset: { name: string; browser_download_url: string } }> => {
+  const releases = (await (
+    await fetch('https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=10', {
+      headers: { 'User-Agent': 'lmsuperapp' }
+    })
+  ).json()) as LlamaRelease[];
+  const re = BUILD_ASSET[build] ?? BUILD_ASSET.vulkan;
+  for (const rel of releases) {
+    const found = (rel.assets ?? []).find((a) => re.test(a.name));
+    if (found) return { tag: rel.tag_name ?? '', asset: found };
+  }
+  throw new Error(`No ${build} build found in recent llama.cpp releases`);
+};
+
+ipcMain.handle('backend:latest', async () => {
+  const settings = await loadSettings();
+  return { tag: (await findLlamaRelease(settings.backendBuild)).tag };
+});
+
 ipcMain.handle('backend:install', async (event) => {
   if (process.platform !== 'win32' || process.arch !== 'x64') {
     throw new Error(
@@ -523,30 +572,8 @@ ipcMain.handle('backend:install', async (event) => {
   };
 
   send('fetch');
-  const releases = (await (
-    await fetch('https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=10', {
-      headers: { 'User-Agent': 'lmsuperapp' }
-    })
-  ).json()) as { assets?: { name: string; browser_download_url: string }[] }[];
   const settings = await loadSettings();
-  const BUILD_ASSET: Record<string, RegExp> = {
-    cpu: /bin-win-cpu-x64\.zip$/i,
-    vulkan: /bin-win-vulkan-x64\.zip$/i,
-    'cuda-12.4': /bin-win-cuda-12\.4-x64\.zip$/i,
-    'cuda-13.4': /bin-win-cuda-13\.4-x64\.zip$/i
-  };
-  const re = BUILD_ASSET[settings.backendBuild] ?? BUILD_ASSET.vulkan;
-  let asset: { name: string; browser_download_url: string } | undefined;
-  for (const rel of releases) {
-    const found = (rel.assets ?? []).find((a) => re.test(a.name));
-    if (found) {
-      asset = found;
-      break;
-    }
-  }
-  if (!asset) {
-    throw new Error(`No ${settings.backendBuild} build found in recent llama.cpp releases`);
-  }
+  const { tag, asset } = await findLlamaRelease(settings.backendBuild);
 
   const binDir = path.join(homedir(), '.lmsuperapp', 'bin');
   await mkdir(binDir, { recursive: true });
@@ -581,7 +608,7 @@ ipcMain.handle('backend:install', async (event) => {
   const status = getBackendStatus();
   send('done');
   if (!status.binary) throw new Error('Extracted, but llama-server was not found');
-  return { path: status.binary };
+  return { path: status.binary, tag };
 });
 
 void app.whenReady().then(async () => {

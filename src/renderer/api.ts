@@ -79,13 +79,17 @@ export const chatSend = (
   messages: LmChatMessage[],
   stream: boolean,
   sampling?: LmSampling
-): Promise<{ content: string; tokPerSec?: number; approx?: boolean }> =>
-  requireApi().chatSend(messages, stream, sampling);
+): Promise<LmChatResult> => requireApi().chatSend(messages, stream, sampling);
 
-export const onChatChunk = (cb: (text: string) => void): (() => void) =>
+export const chatStop = (): Promise<void> => requireApi().chatStop();
+
+export const onChatChunk = (cb: (chunk: LmChatChunk) => void): (() => void) =>
   requireApi().onChatChunk(cb);
 
-export const installBackend = (): Promise<{ path: string }> => requireApi().installBackend();
+export const installBackend = (): Promise<{ path: string; tag?: string }> =>
+  requireApi().installBackend();
+
+export const backendLatest = (): Promise<{ tag: string }> => requireApi().backendLatest();
 
 export const onBackendProgress = (
   cb: (p: LmInstallProgress) => void

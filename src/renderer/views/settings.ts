@@ -1,4 +1,5 @@
 import {
+  backendLatest,
   getAppInfo,
   getBackendStatus,
   getChangelog,
@@ -68,6 +69,7 @@ const initGeneral = (): void => {
   const fsBox = byId('opt-fullscreen') as HTMLInputElement;
   const confirmBox = byId('opt-confirm-dl') as HTMLInputElement;
   const streamBox = byId('opt-stream') as HTMLInputElement;
+  const thinkBox = byId('opt-thinking') as HTMLInputElement;
   const notifyBox = byId('opt-notify') as HTMLInputElement;
   const contextBox = byId('opt-context') as HTMLInputElement;
   const confirmCloseBox = byId('opt-confirm-close') as HTMLInputElement;
@@ -76,6 +78,7 @@ const initGeneral = (): void => {
       fsBox.checked = s.fullscreen;
       confirmBox.checked = s.confirmDownload;
       streamBox.checked = s.streamReplies;
+      thinkBox.checked = s.showThinking;
       notifyBox.checked = s.notifyOnReply;
       contextBox.value = String(s.contextMessages);
       confirmCloseBox.checked = s.confirmOnClose;
@@ -93,6 +96,7 @@ const initGeneral = (): void => {
     });
   };
   patchBool(streamBox, 'streamReplies');
+  patchBool(thinkBox, 'showThinking');
   patchBool(notifyBox, 'notifyOnReply');
   patchBool(confirmCloseBox, 'confirmOnClose');
 
@@ -130,14 +134,39 @@ const initGeneral = (): void => {
   });
 };
 
+let latestBackendTag: string | null = null;
+let backendInstalling = false;
+
 const refreshBackendStatus = (): void => {
   getBackendStatus()
     .then((s) => {
       byId('be-binary').textContent = s.binary ?? 'not found';
+      byId('be-version').textContent = s.version ?? '—';
+      byId('be-latest').textContent = latestBackendTag ?? '—';
       byId('be-running').textContent = s.running ? (s.ready ? 'yes (ready)' : 'starting…') : 'no';
       byId('be-model').textContent = s.model ? fileName(s.model) : '—';
       byId('be-port').textContent = String(s.port);
       byId('be-error').textContent = s.lastError ?? '';
+
+      const installBtn = byId('btn-be-install') as HTMLButtonElement;
+      const update = Boolean(
+        s.binary && s.version && latestBackendTag && s.version !== latestBackendTag
+      );
+      installBtn.textContent = !s.binary
+        ? 'Install llama.cpp'
+        : update
+          ? `Update to ${latestBackendTag}`
+          : 'Reinstall llama.cpp';
+      if (!backendInstalling) {
+        const note = byId('be-install-note');
+        note.textContent = !s.binary
+          ? 'llama.cpp is required to run models locally.'
+          : update
+            ? 'Update available'
+            : s.version && latestBackendTag
+              ? 'Up to date'
+              : 'Installed';
+      }
     })
     .catch((err: unknown) => console.error('Failed to load backend status:', err));
 };
@@ -163,9 +192,11 @@ const initBackend = (): void => {
 
   installBtn.addEventListener('click', () => {
     installBtn.disabled = true;
+    backendInstalling = true;
     installNote.textContent = 'Fetching latest llama.cpp release…';
     installBackend()
       .then((res) => {
+        latestBackendTag = res.tag ?? latestBackendTag;
         installNote.textContent = `Installed: ${res.path}`;
       })
       .catch((err: unknown) => {
@@ -174,6 +205,7 @@ const initBackend = (): void => {
       })
       .finally(() => {
         installBtn.disabled = false;
+        backendInstalling = false;
         refreshBackendStatus();
       });
   });
@@ -236,6 +268,16 @@ const initBackend = (): void => {
       (byId('opt-threads') as HTMLInputElement).value = String(s.threads);
     })
     .catch((err: unknown) => console.error('Failed to load settings:', err));
+
+  backendLatest()
+    .then((r) => {
+      latestBackendTag = r.tag || null;
+      refreshBackendStatus();
+    })
+    .catch((err: unknown) => {
+      byId('be-latest').textContent = 'check failed';
+      reportDebug('backend.latest', err);
+    });
 
   refreshBackendStatus();
 };
@@ -349,6 +391,11 @@ export const mountSettings = (root: HTMLElement): void => {
               <small>Tokens appear live as the model writes</small>
             </label>
             <label class="setting-row">
+              <input type="checkbox" id="opt-thinking" />
+              <span>Show model thinking</span>
+              <small>Collapsible block with the model's reasoning</small>
+            </label>
+            <label class="setting-row">
               <input type="checkbox" id="opt-notify" />
               <span>Notify on reply</span>
               <small>Desktop notification when a reply finishes while unfocused</small>
@@ -401,15 +448,17 @@ export const mountSettings = (root: HTMLElement): void => {
 
         <div class="settings-page" id="settings-theme">
           <h2 class="page-title">Theme</h2>
-          <div class="theme-options" role="radiogroup" aria-label="Theme">
-            ${THEMES.map(
-              (t) => `
-            <label class="theme-option">
-              <input type="radio" name="theme" value="${t.id}" />
-              <span>${t.label}</span>
-              <small>${t.hint}</small>
-            </label>`
-            ).join('')}
+          <div class="section-group">
+            <div class="theme-options" role="radiogroup" aria-label="Theme">
+              ${THEMES.map(
+                (t) => `
+              <label class="theme-option">
+                <input type="radio" name="theme" value="${t.id}" />
+                <span>${t.label}</span>
+                <small>${t.hint}</small>
+              </label>`
+              ).join('')}
+            </div>
           </div>
 
           <div class="section-group">
@@ -436,6 +485,8 @@ export const mountSettings = (root: HTMLElement): void => {
             <h3 class="section-title">llama.cpp</h3>
             <dl class="about-list">
               <div class="about-row"><dt>Binary</dt><dd id="be-binary">—</dd></div>
+              <div class="about-row"><dt>Version</dt><dd id="be-version">—</dd></div>
+              <div class="about-row"><dt>Latest</dt><dd id="be-latest">—</dd></div>
               <div class="about-row"><dt>Running</dt><dd id="be-running">—</dd></div>
               <div class="about-row"><dt>Model</dt><dd id="be-model">—</dd></div>
               <div class="about-row"><dt>Port</dt><dd id="be-port">—</dd></div>

@@ -1,5 +1,6 @@
 import {
   chatSend,
+  chatStop,
   chatsLoad,
   chatsSave,
   getSettings,
@@ -24,6 +25,7 @@ import { mountSelect } from '../core/select';
 import { onTabOpen } from '../core/tabs';
 
 const ICON_SEND = icon('send');
+const ICON_STOP = icon('stop');
 const ICON_COPY = icon('copy');
 const ICON_RETRY = icon('retry');
 const ICON_EDIT = icon('edit');
@@ -45,6 +47,7 @@ interface MsgStat {
 interface UIMsg {
   role: 'user' | 'assistant';
   versions: string[];
+  thinking?: (string | null)[];
   vi: number;
   ts?: number;
   stats?: MsgStat[];
@@ -58,6 +61,7 @@ const toUIMsg = (m: LmStoredMessage): UIMsg => {
   return {
     role: m.role === 'user' ? 'user' : 'assistant',
     versions,
+    thinking: m.thinking,
     vi: Math.min(Math.max(m.vi ?? versions.length - 1, 0), versions.length - 1),
     ts: m.ts,
     stats: m.stats
@@ -73,6 +77,7 @@ const toStored = (m: UIMsg): LmStoredMessage => ({
   role: m.role,
   content: m.versions[m.vi],
   versions: m.versions,
+  thinking: m.thinking,
   vi: m.vi,
   ts: m.ts,
   stats: m.stats
@@ -97,7 +102,6 @@ export const mountChat = (root: HTMLElement): void => {
         <div class="chat-top">
           <div id="chat-model-sel"></div>
           <button class="icon-btn" id="chat-params" type="button" aria-label="Chat settings" title="Chat settings">${ICON_TUNE}</button>
-          <!-- TODO(chat): stop-generation button while the backend is answering -->
         </div>
         <div class="chat-scroll" id="chat-scroll">
           <p class="chat-empty" id="chat-empty">Pick a model above, then send a message.</p>
@@ -138,7 +142,6 @@ export const mountChat = (root: HTMLElement): void => {
       </aside>
     </div>`;
 
-  //TODO(chat): streaming replies (token-by-token), then a stop button makes sense
   //TODO(chat): Ctrl+Up edit-last-message shortcut
 
   const scroll = byId('chat-scroll');
@@ -154,7 +157,7 @@ export const mountChat = (root: HTMLElement): void => {
   let history: UIMsg[] = [];
   let chatId = newChatId();
   let pending = false;
-  let chatCfg = { streamReplies: true, notifyOnReply: false };
+  let chatCfg = { streamReplies: true, notifyOnReply: false, showThinking: true };
   let sampling: LmSampling = { ...DEFAULT_SAMPLING };
   let chatTitleOverride: string | null = null;
 
@@ -179,25 +182,38 @@ export const mountChat = (root: HTMLElement): void => {
 
   const setBusy = (on: boolean): void => {
     pending = on;
-    sendBtn.disabled = on;
     sendBtn.classList.toggle('is-busy', on);
+    sendBtn.innerHTML = on ? ICON_STOP : ICON_SEND;
+    sendBtn.setAttribute('aria-label', on ? 'Stop generating' : 'Send');
     input.disabled = on;
   };
 
   // streamed tokens land in liveBody while a reply is generating
   let liveBody: HTMLElement | null = null;
   let liveText = '';
+  let liveThink = '';
   let liveQueued = false;
 
-  onChatChunk((text) => {
+  const thinkBlock = (text: string, open: boolean): string =>
+    text && chatCfg.showThinking
+      ? `<details class="msg-think"${open ? ' open' : ''}><summary>${
+          open ? 'Thinking…' : 'Thought process'
+        }</summary><div class="msg-think-text">${escapeHtml(text)}</div></details>`
+      : '';
+
+  const liveHtml = (): string =>
+    thinkBlock(liveThink, true) + (liveText ? renderMarkdown(liveText) : '');
+
+  onChatChunk((chunk) => {
     if (!liveBody) return;
-    liveText += text;
+    if (chunk.kind === 'thinking') liveThink += chunk.text;
+    else liveText += chunk.text;
     if (liveQueued) return;
     liveQueued = true;
     requestAnimationFrame(() => {
       liveQueued = false;
       if (!liveBody) return;
-      liveBody.innerHTML = renderMarkdown(liveText);
+      liveBody.innerHTML = liveHtml();
       scroll.scrollTop = scroll.scrollHeight;
     });
   });
@@ -266,13 +282,15 @@ export const mountChat = (root: HTMLElement): void => {
       m.role === 'assistant'
         ? renderMarkdown(m.versions[m.vi])
         : escapeHtml(m.versions[m.vi]);
+    const think =
+      m.role === 'assistant' ? thinkBlock(m.thinking?.[m.vi] ?? '', false) : '';
     const nav =
       m.versions.length > 1
         ? `<span class="msg-ver"><button class="msg-act" data-act="prev" type="button" aria-label="Older version">‹</button><span>${
             m.vi + 1
           }/${m.versions.length}</span><button class="msg-act" data-act="next" type="button" aria-label="Newer version">›</button></span>`
         : '';
-    div.innerHTML = `<div class="msg-body">${body}</div>
+    div.innerHTML = `<div class="msg-body">${think}${body}</div>
       <div class="msg-acts">
         <button class="msg-act" data-act="copy" type="button" aria-label="Copy" title="Copy">${ICON_COPY}</button>
         ${
@@ -324,22 +342,28 @@ export const mountChat = (root: HTMLElement): void => {
   const runCompletion = (popOnError: boolean): void => {
     setBusy(true);
     liveText = '';
+    liveThink = '';
     const thinking = addMsg('thinking', '<em>Starting model / thinking…</em>');
     liveBody = thinking.querySelector<HTMLElement>('.msg-body');
     chatSend(history.map(toFlat), chatCfg.streamReplies, sampling)
       .then((res) => {
         liveBody = null;
+        if (res.stopped && !res.content && !res.thinking) {
+          thinking.remove();
+          return;
+        }
         thinking.remove();
         history.push({
           role: 'assistant',
           versions: [res.content],
+          thinking: res.thinking ? [res.thinking] : undefined,
           vi: 0,
           ts: Date.now(),
           stats: [{ tps: res.tokPerSec, approx: res.approx }]
         });
         renderAll();
         save();
-        notifyReply(res.content);
+        if (!res.stopped) notifyReply(res.content);
       })
       .catch((err: unknown) => {
         liveBody = null;
@@ -367,12 +391,15 @@ export const mountChat = (root: HTMLElement): void => {
       ?.querySelector<HTMLElement>('.msg-body');
     if (body) body.innerHTML = '<em>Thinking…</em>';
     liveText = '';
+    liveThink = '';
     liveBody = body ?? null;
     chatSend(context, chatCfg.streamReplies, sampling)
       .then((res) => {
         liveBody = null;
         m.versions.push(res.content);
         m.vi = m.versions.length - 1;
+        m.thinking = m.thinking ?? [];
+        m.thinking[m.vi] = res.thinking ?? null;
         m.ts = Date.now();
         m.stats = m.stats ?? [];
         m.stats[m.vi] = { tps: res.tokPerSec, approx: res.approx };
@@ -475,7 +502,12 @@ export const mountChat = (root: HTMLElement): void => {
   const refreshModels = (): void => {
     void Promise.all([localModels(), getSettings()])
       .then(([list, s]) => {
-        chatCfg = { streamReplies: s.streamReplies, notifyOnReply: s.notifyOnReply };
+        chatCfg = {
+          streamReplies: s.streamReplies,
+          notifyOnReply: s.notifyOnReply,
+          showThinking: s.showThinking
+        };
+        if (!pending && history.length) renderAll(false);
         modelSel.setOptions([
           ...s.localFiles
             .filter((p) => !list.some((m) => m.path === p))
@@ -524,8 +556,12 @@ export const mountChat = (root: HTMLElement): void => {
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
+    if (pending) {
+      chatStop().catch((err: unknown) => reportDebug('chat.stop', err));
+      return;
+    }
     const text = input.value.trim();
-    if (!text || pending) return;
+    if (!text) return;
     if (!modelSel.getValue()) {
       addMsg('error', '<p>Pick a model above first — a downloaded one or a local .gguf.</p>');
       return;

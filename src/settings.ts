@@ -17,6 +17,7 @@ export interface LmSettings {
   idleStopMinutes: number;
   backendBuild: BackendBuild;
   streamReplies: boolean;
+  showThinking: boolean;
   notifyOnReply: boolean;
   contextMessages: number;
   confirmOnClose: boolean;
@@ -43,6 +44,7 @@ const DEFAULT_SETTINGS: LmSettings = {
   idleStopMinutes: 10,
   backendBuild: 'vulkan',
   streamReplies: true,
+  showThinking: true,
   notifyOnReply: false,
   contextMessages: 20,
   confirmOnClose: false,
@@ -139,6 +141,7 @@ export async function patchSettings(
     next.backendBuild = patch.backendBuild as BackendBuild;
   }
   if (typeof patch.streamReplies === 'boolean') next.streamReplies = patch.streamReplies;
+  if (typeof patch.showThinking === 'boolean') next.showThinking = patch.showThinking;
   if (typeof patch.notifyOnReply === 'boolean') next.notifyOnReply = patch.notifyOnReply;
   if (typeof patch.confirmOnClose === 'boolean') next.confirmOnClose = patch.confirmOnClose;
   if (

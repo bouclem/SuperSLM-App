@@ -4,14 +4,17 @@ A desktop superapp for language models (LMs), built with Electron.
 
 ## Status
 
-v0.2.2 — LM SuperApp. Home dashboard (stat tiles), Models (HF sort + search, detail panel, GGUF downloads to
+v0.2.3 — LM SuperApp. Home dashboard (stat tiles), Models (HF sort + search, detail panel, GGUF downloads to
 `~/.lmsuperapp/models/`, local .gguf picker), Chat (custom model select,
 chat history in `~/.lmsuperapp/chats/` with rename/delete hover actions,
-per-chat sampling params + system prompt, real inference via llama.cpp
+per-chat sampling params + system prompt, streaming replies with a stop
+button and a collapsible model-thinking block, real inference via llama.cpp
 backend), Library (local files + downloads), Finetune and Export
 (placeholders via "+" menu), and Settings (General, Backend, Theme, Changelog, Debug) via the
 sidebar gear. Five themes, text size, fullscreen, debug, devtools,
 modelFile, localFiles, confirmDownload, idleStopMinutes, backendBuild,
+streamReplies, showThinking, notifyOnReply, contextMessages,
+confirmOnClose, defaultModelSort,
 backendPort, ctxSize, gpuLayers and threads
 persist to `~/.lmsuperapp/settings.json`. App icon in
 `icons/` (regenerate via `node scripts/gen-icon.mjs`). `src/backend/` holds the

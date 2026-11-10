@@ -14,6 +14,7 @@ interface LmSettings {
   idleStopMinutes: number;
   backendBuild: LmBackendBuild;
   streamReplies: boolean;
+  showThinking: boolean;
   notifyOnReply: boolean;
   contextMessages: number;
   confirmOnClose: boolean;
@@ -78,6 +79,7 @@ interface LmDownloadProgress {
 
 interface LmBackendStatus {
   binary: string | null;
+  version: string | null;
   running: boolean;
   ready: boolean;
   port: number;
@@ -89,6 +91,7 @@ interface LmStoredMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   versions?: string[];
+  thinking?: (string | null)[];
   vi?: number;
   ts?: number;
   stats?: { tps?: number; approx?: boolean }[];
@@ -115,6 +118,19 @@ interface LmInstallProgress {
   stage: 'fetch' | 'download' | 'extract' | 'done';
   received: number;
   total: number;
+}
+
+interface LmChatChunk {
+  kind: 'content' | 'thinking';
+  text: string;
+}
+
+interface LmChatResult {
+  content: string;
+  thinking?: string;
+  tokPerSec?: number;
+  approx?: boolean;
+  stopped?: boolean;
 }
 
 interface LmApi {
@@ -159,9 +175,11 @@ interface LmApi {
     messages: LmChatMessage[],
     stream: boolean,
     sampling?: LmSampling
-  ) => Promise<{ content: string; tokPerSec?: number; approx?: boolean }>;
-  onChatChunk: (cb: (text: string) => void) => () => void;
-  installBackend: () => Promise<{ path: string }>;
+  ) => Promise<LmChatResult>;
+  chatStop: () => Promise<void>;
+  onChatChunk: (cb: (chunk: LmChatChunk) => void) => () => void;
+  installBackend: () => Promise<{ path: string; tag?: string }>;
+  backendLatest: () => Promise<{ tag: string }>;
   onBackendProgress: (cb: (p: LmInstallProgress) => void) => () => void;
   setZoom: (factor: number) => void;
 }

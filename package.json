@@ -1,6 +1,6 @@
 {
   "name": "lm-superapp",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "LM SuperApp - a desktop home for language models",
   "main": "out/main.js",
   "scripts": {
@@ -41,7 +41,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "LM SuperApp"
+      "shortcutName": "LM SuperApp",
+      "createDesktopShortcut": true
     }
   }
 }

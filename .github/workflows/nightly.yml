@@ -2,7 +2,7 @@ name: Nightly
 
 on:
   schedule:
-    - cron: '0 3 * * *' # every night, 03:00 UTC
+    - cron: '0 14 * * *' # every day, 14:00 UTC (16:00 CEST)
   workflow_dispatch:
 
 permissions:

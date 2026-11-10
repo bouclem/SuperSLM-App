@@ -20,6 +20,7 @@ import more from '../icons/more.svg';
 import retry from '../icons/retry.svg';
 import send from '../icons/send.svg';
 import settings from '../icons/settings.svg';
+import stop from '../icons/stop.svg';
 import theme from '../icons/theme.svg';
 import trash from '../icons/trash.svg';
 import tune from '../icons/tune.svg';
@@ -47,6 +48,7 @@ const ICONS: Record<string, string> = {
   retry,
   send,
   settings,
+  stop,
   theme,
   trash,
   tune
