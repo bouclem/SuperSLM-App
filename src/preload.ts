@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('lmsuperapp', {
   getSettings: (): Promise<unknown> => ipcRenderer.invoke('settings:get'),
   patchSettings: (patch: unknown): Promise<unknown> =>
     ipcRenderer.invoke('settings:patch', patch),
+  exportSettings: (): Promise<unknown> => ipcRenderer.invoke('settings:export'),
+  importSettings: (): Promise<unknown> => ipcRenderer.invoke('settings:import'),
   pickGguf: (): Promise<unknown> => ipcRenderer.invoke('dialog:pickGguf'),
   setFullscreen: (on: boolean): Promise<unknown> =>
     ipcRenderer.invoke('window:fullscreen', on),

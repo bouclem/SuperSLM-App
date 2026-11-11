@@ -138,6 +138,8 @@ interface LmApi {
   getChangelog: () => Promise<string>;
   getSettings: () => Promise<LmSettings>;
   patchSettings: (patch: Partial<LmSettings>) => Promise<LmSettings>;
+  exportSettings: () => Promise<{ path: string } | null>;
+  importSettings: () => Promise<LmSettings | null>;
   pickGguf: () => Promise<string[] | null>;
   setFullscreen: (on: boolean) => Promise<void>;
   openDevTools: () => Promise<void>;

@@ -88,11 +88,19 @@ const findBinary = (): string | null => {
   return null;
 };
 
-let versionCache: { bin: string; version: string | null } | null = null;
+let versionCache: { bin: string; mtime: number; version: string | null } | null = null;
 
 // e.g. "version: 8249 (a1b2c3d)" -> "b8249" to match release tags
 const binaryVersion = (bin: string): string | null => {
-  if (versionCache?.bin === bin) return versionCache.version;
+  let mtime = 0;
+  try {
+    mtime = statSync(bin).mtimeMs;
+  } catch {
+    // bare 'llama-server' resolved from PATH — keep mtime 0
+  }
+  if (versionCache?.bin === bin && versionCache.mtime === mtime) {
+    return versionCache.version;
+  }
   let version: string | null = null;
   try {
     const out = spawnSync(bin, ['--version'], { encoding: 'utf8' });
@@ -102,7 +110,7 @@ const binaryVersion = (bin: string): string | null => {
   } catch {
     // binary won't run
   }
-  versionCache = { bin, version };
+  versionCache = { bin, mtime, version };
   return version;
 };
 

@@ -1,9 +1,11 @@
 import {
   backendLatest,
+  exportSettings,
   getAppInfo,
   getBackendStatus,
   getChangelog,
   getSettings,
+  importSettings,
   installBackend,
   onBackendProgress,
   openDevTools,
@@ -18,6 +20,7 @@ import { fileName } from '../core/format';
 import { icon } from '../core/icons';
 import { renderMarkdown } from '../core/markdown';
 import { onTabOpen } from '../core/tabs';
+import { applyFontScale, applyTheme } from '../core/theme';
 
 const IDLE_OPTIONS = [0, 5, 10, 15];
 
@@ -132,10 +135,37 @@ const initGeneral = (): void => {
       console.error('Failed to set fullscreen:', err)
     );
   });
+
+  const ioNote = byId('set-io-note');
+  byId('btn-set-export').addEventListener('click', () => {
+    exportSettings()
+      .then((res) => {
+        if (res) ioNote.textContent = `Exported to ${res.path}`;
+      })
+      .catch((err: unknown) => {
+        ioNote.textContent = err instanceof Error ? err.message : String(err);
+        reportDebug('settings.export', err);
+      });
+  });
+  byId('btn-set-import').addEventListener('click', () => {
+    importSettings()
+      .then((s) => {
+        if (!s) return;
+        applyTheme(s.theme);
+        applyFontScale(s.fontScale);
+        setDebugEnabled(s.debug);
+        mountSettings(byId('tab-settings'));
+      })
+      .catch((err: unknown) => {
+        ioNote.textContent = err instanceof Error ? err.message : String(err);
+        reportDebug('settings.import', err);
+      });
+  });
 };
 
 let latestBackendTag: string | null = null;
 let backendInstalling = false;
+let backendProgressOff: (() => void) | null = null;
 
 const refreshBackendStatus = (): void => {
   getBackendStatus()
@@ -210,7 +240,8 @@ const initBackend = (): void => {
       });
   });
 
-  onBackendProgress((p) => {
+  backendProgressOff?.();
+  backendProgressOff = onBackendProgress((p) => {
     if (p.stage === 'download' && p.total > 0) {
       installNote.textContent = `Downloading… ${Math.round((p.received / p.total) * 100)}%`;
     } else if (p.stage === 'extract') {
@@ -282,6 +313,10 @@ const initBackend = (): void => {
   refreshBackendStatus();
 };
 
+// remounting the settings view (e.g. after settings import) must not stack
+// document listeners pointing at detached elements
+let debugListener: (() => void) | null = null;
+
 const initDebug = (): void => {
   const dbg = byId('opt-debug') as HTMLInputElement;
   const dt = byId('opt-devtools') as HTMLInputElement;
@@ -330,7 +365,9 @@ const initDebug = (): void => {
       : '<p class="debug-none">No errors captured yet.</p>';
   };
 
-  document.addEventListener('lmsuperapp:debug', renderEntries);
+  if (debugListener) document.removeEventListener('lmsuperapp:debug', debugListener);
+  debugListener = renderEntries;
+  document.addEventListener('lmsuperapp:debug', debugListener);
   renderEntries();
 };
 
@@ -435,6 +472,15 @@ export const mountSettings = (root: HTMLElement): void => {
           </div>
 
           <div class="section-group">
+            <h3 class="section-title">Settings file</h3>
+            <div class="be-btns">
+              <button class="action-btn" id="btn-set-export" type="button">Export…</button>
+              <button class="action-btn" id="btn-set-import" type="button">Import…</button>
+            </div>
+            <p class="settings-note" id="set-io-note">Saved to ~/.lmsuperapp/settings.json</p>
+          </div>
+
+          <div class="section-group">
             <h3 class="section-title">About</h3>
             <dl class="about-list">
               <div class="about-row"><dt>Version</dt><dd id="set-version">—</dd></div>
@@ -444,7 +490,6 @@ export const mountSettings = (root: HTMLElement): void => {
             </dl>
           </div>
         </div>
-        <!-- TODO(settings): import/export settings.json, llama.cpp update checker -->
 
         <div class="settings-page" id="settings-theme">
           <h2 class="page-title">Theme</h2>

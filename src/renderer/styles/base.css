@@ -9,6 +9,10 @@
   --accent: oklch(0.768 0.106 75);
   --ok: oklch(0.65 0.12 152);
   --err: oklch(0.7 0.14 30);
+  --tok-kw: oklch(0.74 0.12 300);
+  --tok-str: oklch(0.75 0.1 150);
+  --tok-num: oklch(0.76 0.11 45);
+  --tok-title: oklch(0.76 0.09 230);
   --font-display: 'Space Grotesk', 'Segoe UI Variable Display', system-ui, sans-serif;
   --font-body: 'Instrument Sans', 'Segoe UI Variable Text', system-ui, sans-serif;
   color-scheme: dark;
@@ -25,6 +29,10 @@
   --accent: oklch(0.575 0.118 68);
   --ok: oklch(0.545 0.115 150);
   --err: oklch(0.56 0.15 30);
+  --tok-kw: oklch(0.5 0.15 300);
+  --tok-str: oklch(0.48 0.1 150);
+  --tok-num: oklch(0.52 0.13 45);
+  --tok-title: oklch(0.5 0.11 250);
   color-scheme: light;
 }
 
@@ -53,6 +61,10 @@
   --accent: oklch(0.545 0.128 52);
   --ok: oklch(0.545 0.11 150);
   --err: oklch(0.55 0.15 30);
+  --tok-kw: oklch(0.5 0.15 300);
+  --tok-str: oklch(0.48 0.1 150);
+  --tok-num: oklch(0.52 0.13 45);
+  --tok-title: oklch(0.5 0.11 250);
   color-scheme: light;
 }
 
@@ -310,7 +322,8 @@ body {
   cursor: pointer;
 }
 
-.csel-opt:hover {
+.csel-opt:hover,
+.csel-opt.is-active {
   background: var(--raised);
 }
 
@@ -380,6 +393,120 @@ body {
   margin: 8px 0;
   overflow-x: auto;
   text-align: center;
+}
+
+.md-task {
+  margin-left: -20px;
+  list-style: none;
+}
+
+.md-task input {
+  margin-right: 6px;
+  accent-color: var(--accent);
+  vertical-align: middle;
+}
+
+.md-fn {
+  font-size: 0.75em;
+  line-height: 0;
+}
+
+.md-fnref,
+.md-fnback {
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.md-fnref:hover,
+.md-fnback:hover {
+  text-decoration: underline;
+}
+
+.md-fnback {
+  margin-left: 6px;
+}
+
+.md-footnotes {
+  margin: 10px 0 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 0.82em;
+}
+
+.md-footnotes ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.md-footnotes li {
+  margin: 2px 0;
+}
+
+/* ---- syntax highlighting (highlight.js) ---- */
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--faint);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-tag,
+.hljs-meta .hljs-keyword {
+  color: var(--tok-kw);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-template-string {
+  color: var(--tok-str);
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+  color: var(--tok-num);
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-name,
+.hljs-built_in,
+.hljs-type {
+  color: var(--tok-title);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: var(--accent);
+}
+
+.hljs-deletion {
+  color: var(--err);
+}
+
+.hljs-meta {
+  color: var(--dim);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
 }
 
 .nav-soon {

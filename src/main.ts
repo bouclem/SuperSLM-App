@@ -103,11 +103,11 @@ ipcMain.handle('app:changelog', () =>
 
 ipcMain.handle('settings:get', () => loadSettings());
 
-ipcMain.handle('settings:patch', async (_event, patch: Partial<LmSettings>) => {
-  const prev = await loadSettings();
-  const next = await patchSettings(patch);
-  if (typeof patch?.idleStopMinutes === 'number') setIdleMinutes(next.idleStopMinutes);
-  if (typeof patch?.confirmOnClose === 'boolean') confirmOnClose = next.confirmOnClose;
+// push changed settings into the running app (idle timer, close-confirm,
+// llama-server launch params — stops the backend when its config moved)
+const applyRuntimeSettings = (prev: LmSettings, next: LmSettings): void => {
+  if (prev.idleStopMinutes !== next.idleStopMinutes) setIdleMinutes(next.idleStopMinutes);
+  confirmOnClose = next.confirmOnClose;
   const launchChanged =
     next.backendPort !== prev.backendPort ||
     next.ctxSize !== prev.ctxSize ||
@@ -122,13 +122,49 @@ ipcMain.handle('settings:patch', async (_event, patch: Partial<LmSettings>) => {
     });
     if (getBackendStatus().running) void stopBackend();
   }
-  if (
-    typeof patch?.modelFile === 'string' &&
-    getBackendStatus().running &&
-    getBackendStatus().model !== next.modelFile
-  ) {
+  if (getBackendStatus().running && getBackendStatus().model !== next.modelFile) {
     void stopBackend();
   }
+};
+
+ipcMain.handle('settings:patch', async (_event, patch: Partial<LmSettings>) => {
+  const prev = await loadSettings();
+  const next = await patchSettings(patch);
+  applyRuntimeSettings(prev, next);
+  return next;
+});
+
+ipcMain.handle('settings:export', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return null;
+  const res = await dialog.showSaveDialog(win, {
+    title: 'Export settings',
+    defaultPath: 'settings.json',
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  });
+  if (res.canceled || !res.filePath) return null;
+  const settings = await loadSettings();
+  await writeFile(res.filePath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+  return { path: res.filePath };
+});
+
+ipcMain.handle('settings:import', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return null;
+  const res = await dialog.showOpenDialog(win, {
+    title: 'Import settings',
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+    properties: ['openFile']
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const parsed = JSON.parse(await readFile(res.filePaths[0], 'utf8')) as unknown;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Not a settings file');
+  }
+  const prev = await loadSettings();
+  const next = await patchSettings(parsed as Partial<LmSettings>);
+  applyRuntimeSettings(prev, next);
+  if (next.fullscreen !== prev.fullscreen) win.setFullScreen(next.fullscreen);
   return next;
 });
 

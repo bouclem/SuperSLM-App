@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.4 - 2026-11-11
+
+- Settings import/export (Settings > General > Settings file): Export writes `settings.json` via a save dialog, Import loads one back — every field validated by the normal settings rules and applied live (theme, text size, fullscreen, backend launch params)
+- Markdown upgrades in replies, descriptions and the changelog: nested lists (mixed `ul`/`ol` by indent), task lists (`- [ ]` / `- [x]` with checkboxes), footnotes (`[^id]` refs scroll to the definition and back), and syntax highlighting in fenced code blocks via highlight.js (language taken from the fence, e.g. ` ```python `)
+- Custom dropdowns are keyboard-driven now: open with ↓/Enter/Space, ↑/↓ moves the highlight (wraps), Home/End jumps, Enter/Space picks, Esc closes, Tab dismisses
+- Fixed llama.cpp "Update to bXXXX" staying after a successful update — the installed-version cache only keyed on the binary path, not its mtime, so a replaced binary kept reporting the old version
+- Nightly installer is versioned from `package.json` (`<version>-nightly.<sha>`) instead of the hardcoded `0.2.0`, so the exe name tracks the real version
+- Installer no longer force-creates a desktop shortcut (`createDesktopShortcut: false`); start-menu entry stays
+
 ## 0.2.3 - 2026-11-10
 
 - Stop generation: while a reply is generating, the send button becomes a stop square — stopping aborts the request and keeps the partial reply (works streamed or not)

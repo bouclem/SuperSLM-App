@@ -1,4 +1,5 @@
 import { escapeHtml } from './dom';
+import { highlightCode } from './highlight';
 import { icon } from './icons';
 
 interface Stashed {
@@ -6,10 +7,17 @@ interface Stashed {
   display: boolean;
 }
 
+interface MdCtx {
+  math: Stashed[];
+  footDefs: Map<string, string>;
+  footOrder: string[];
+  uid: number;
+}
+
 const mathHtml = (tex: string, display: boolean): string =>
   `<span class="md-math" data-tex="${escapeHtml(tex)}" data-display="${display ? '1' : ''}"></span>`;
 
-const inlineMd = (s: string, math: Stashed[]): string => {
+const inlineMd = (s: string, ctx: MdCtx): string => {
   const codes: string[] = [];
   let t = s.replace(/`([^`]+)`/g, (_m, c: string) => {
     codes.push(c);
@@ -17,32 +25,40 @@ const inlineMd = (s: string, math: Stashed[]): string => {
   });
   t = t
     .replace(/\$\$([\s\S]+?)\$\$/g, (_m, x: string) => {
-      math.push({ tex: x, display: true });
-      return ` MT${math.length - 1} `;
+      ctx.math.push({ tex: x, display: true });
+      return ` MT${ctx.math.length - 1} `;
     })
     .replace(/\\\[([\s\S]+?)\\\]/g, (_m, x: string) => {
-      math.push({ tex: x, display: true });
-      return ` MT${math.length - 1} `;
+      ctx.math.push({ tex: x, display: true });
+      return ` MT${ctx.math.length - 1} `;
     })
     .replace(/\\\(([\s\S]+?)\\\)/g, (_m, x: string) => {
-      math.push({ tex: x, display: false });
-      return ` MT${math.length - 1} `;
+      ctx.math.push({ tex: x, display: false });
+      return ` MT${ctx.math.length - 1} `;
     })
     .replace(/\$([^$\n]+?)\$/g, (_m, x: string) => {
-      math.push({ tex: x, display: false });
-      return ` MT${math.length - 1} `;
+      ctx.math.push({ tex: x, display: false });
+      return ` MT${ctx.math.length - 1} `;
     });
   t = escapeHtml(t)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
     .replace(
-      /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+      /\[([^\]]+)\]\((https?:\/\/[^)\s"'<>]+)\)/g,
       (_m, text: string, url: string) =>
         `<a class="md-link" data-url="${url}">${text}</a>`
     )
+    .replace(/\[\^([\w-]+)\]/g, (_m, id: string) => {
+      let n = ctx.footOrder.indexOf(id);
+      if (n < 0) {
+        ctx.footOrder.push(id);
+        n = ctx.footOrder.length - 1;
+      }
+      return `<sup class="md-fn"><a class="md-fnref" id="fnref-${ctx.uid}-${n}" data-target="fn-${ctx.uid}-${n}">${n + 1}</a></sup>`;
+    })
     .replace(/ CD(\d+) /g, (_m, i: string) => `<code>${escapeHtml(codes[Number(i)])}</code>`)
     .replace(/ MT(\d+) /g, (_m, i: string) => {
-      const st = math[Number(i)];
+      const st = ctx.math[Number(i)];
       return st ? mathHtml(st.tex, st.display) : '';
     });
   return t;
@@ -58,27 +74,37 @@ const splitRow = (line: string): string[] =>
 const isTableSep = (line: string): boolean =>
   /^\s*\|?[\s:|-]+\|?\s*$/.test(line) && line.includes('-');
 
-const isFence = (line: string): boolean => /^(`{3,}|~{3,})/.test(line.trim());
+const FENCE_RE = /^(`{3,}|~{3,})\s*([\w#+.-]*)/;
+const isFence = (line: string): boolean => FENCE_RE.test(line.trim());
 
-const codeBlock = (buf: string[]): string =>
-  `<pre class="md-code"><button class="code-copy" type="button" title="Copy code">${icon('copy')}</button><code>${escapeHtml(
-    buf.join('\n')
-  )}</code></pre>`;
+const codeBlock = (buf: string[], lang: string): string =>
+  `<pre class="md-code"><button class="code-copy" type="button" title="Copy code">${icon('copy')}</button><code${
+    lang ? ` class="language-${escapeHtml(lang)}"` : ''
+  }>${highlightCode(buf.join('\n'), lang)}</code></pre>`;
 
-//TODO(markdown): nested lists, task lists (- [ ]), footnotes, syntax highlighting per fence lang
+const indentWidth = (line: string): number =>
+  (/^[ \t]*/.exec(line)?.[0] ?? '').replace(/\t/g, '    ').length;
+
+let mdUid = 0;
+
 export const renderMarkdown = (md: string): string => {
-  const lines = md.split('\n');
-  const math: Stashed[] = [];
+  const ctx: MdCtx = { math: [], footDefs: new Map(), footOrder: [], uid: ++mdUid };
+
+  // footnote definitions ([^id]: text) are lifted out first so refs can point
+  // at them from anywhere in the document
+  const lines = md.split('\n').filter((line) => {
+    const def = /^\[\^([\w-]+)\]:\s*(.*)$/.exec(line.trim());
+    if (def) ctx.footDefs.set(def[1], def[2]);
+    return !def;
+  });
+
   let html = '';
   let i = 0;
-  let inList: 'ul' | 'ol' | null = null;
+  const listStack: { indent: number; kind: 'ul' | 'ol' }[] = [];
   let inIndent = false;
 
-  const closeList = (): void => {
-    if (inList) {
-      html += `</${inList}>`;
-      inList = null;
-    }
+  const closeLists = (): void => {
+    while (listStack.length) html += `</${listStack.pop()!.kind}>`;
   };
 
   const closeIndent = (): void => {
@@ -93,9 +119,11 @@ export const renderMarkdown = (md: string): string => {
     const trimmed = line.trim();
 
     if (isFence(line)) {
-      closeList();
+      closeLists();
       closeIndent();
-      const marker = trimmed.slice(0, 3);
+      const m = FENCE_RE.exec(trimmed)!;
+      const marker = m[1];
+      const lang = m[2].toLowerCase();
       const buf: string[] = [];
       i += 1;
       while (i < lines.length && !lines[i].trim().startsWith(marker)) {
@@ -103,12 +131,12 @@ export const renderMarkdown = (md: string): string => {
         i += 1;
       }
       i += 1;
-      html += codeBlock(buf);
+      html += codeBlock(buf, lang);
       continue;
     }
 
     if (/^\$\$/.test(trimmed)) {
-      closeList();
+      closeLists();
       closeIndent();
       const buf: string[] = [];
       const rest = trimmed.slice(2);
@@ -128,10 +156,11 @@ export const renderMarkdown = (md: string): string => {
       continue;
     }
 
-    const indented = /^( {4}|\t)/.test(line) && trimmed !== '';
-    if (indented && !inList) {
+    const indent = indentWidth(line);
+    const indented = indent >= 4 && trimmed !== '';
+    if (indented && listStack.length === 0) {
       if (!inIndent) {
-        closeList();
+        closeLists();
         html += `<pre class="md-code"><button class="code-copy" type="button" title="Copy code">${icon('copy')}</button><code>`;
         inIndent = true;
       } else {
@@ -144,7 +173,7 @@ export const renderMarkdown = (md: string): string => {
     closeIndent();
 
     if (trimmed.startsWith('|') && i + 1 < lines.length && isTableSep(lines[i + 1])) {
-      closeList();
+      closeLists();
       const header = splitRow(line);
       i += 2;
       const rows: string[][] = [];
@@ -153,43 +182,63 @@ export const renderMarkdown = (md: string): string => {
         i += 1;
       }
       html += `<table class="md-table"><thead><tr>${header
-        .map((c) => `<th>${inlineMd(c, math)}</th>`)
+        .map((c) => `<th>${inlineMd(c, ctx)}</th>`)
         .join('')}</tr></thead><tbody>${rows
-        .map((r) => `<tr>${r.map((c) => `<td>${inlineMd(c, math)}</td>`).join('')}</tr>`)
+        .map((r) => `<tr>${r.map((c) => `<td>${inlineMd(c, ctx)}</td>`).join('')}</tr>`)
         .join('')}</tbody></table>`;
       continue;
     }
 
-    const ulMatch = /^[-*]\s+(.+)/.exec(trimmed);
-    const olMatch = /^\d+[.)]\s+(.+)/.exec(trimmed);
-    if (ulMatch ?? olMatch) {
-      const kind = ulMatch ? 'ul' : 'ol';
-      if (inList !== kind) {
-        closeList();
-        html += `<${kind}>`;
-        inList = kind;
+    const item = /^([-+*]|\d+[.)])\s+(.*)$/.exec(trimmed);
+    if (item) {
+      const kind = /^\d/.test(item[1]) ? 'ol' : 'ul';
+      // pop deeper levels and same-level lists of a different kind, then open
+      // a new (possibly nested) list when this item sits deeper than the top
+      while (
+        listStack.length &&
+        listStack[listStack.length - 1].indent >= indent
+      ) {
+        const top = listStack[listStack.length - 1];
+        if (top.indent === indent && top.kind === kind) break;
+        html += `</${listStack.pop()!.kind}>`;
       }
-      html += `<li>${inlineMd((ulMatch ?? olMatch)![1], math)}</li>`;
+      if (!listStack.length || listStack[listStack.length - 1].indent < indent) {
+        html += `<${kind}>`;
+        listStack.push({ indent, kind });
+      }
+      const task = /^\[( |x|X)\]\s+(.*)$/.exec(item[2]);
+      html += task
+        ? `<li class="md-task"><input type="checkbox" disabled${task[1] === ' ' ? '' : ' checked'} /> <span>${inlineMd(task[2], ctx)}</span></li>`
+        : `<li>${inlineMd(item[2], ctx)}</li>`;
       i += 1;
       continue;
     }
 
-    closeList();
+    closeLists();
 
     const head = /^(#{1,6})\s+(.*)$/.exec(trimmed);
     if (head) {
       const tag = head[1].length <= 2 ? 'h3' : 'h4';
-      if (head[1].length > 1) html += `<${tag}>${inlineMd(head[2], math)}</${tag}>`;
+      if (head[1].length > 1) html += `<${tag}>${inlineMd(head[2], ctx)}</${tag}>`;
     } else if (trimmed.startsWith('>')) {
-      html += `<blockquote>${inlineMd(trimmed.slice(1).trim(), math)}</blockquote>`;
+      html += `<blockquote>${inlineMd(trimmed.slice(1).trim(), ctx)}</blockquote>`;
     } else if (trimmed !== '') {
-      html += `<p>${inlineMd(trimmed, math)}</p>`;
+      html += `<p>${inlineMd(trimmed, ctx)}</p>`;
     }
     i += 1;
   }
 
-  closeList();
+  closeLists();
   closeIndent();
+
+  if (ctx.footOrder.length) {
+    html += `<section class="md-footnotes"><ol>${ctx.footOrder
+      .map(
+        (id, n) =>
+          `<li id="fn-${ctx.uid}-${n}">${inlineMd(ctx.footDefs.get(id) ?? id, ctx)}<a class="md-fnback" data-target="fnref-${ctx.uid}-${n}" title="Back to reference">↩</a></li>`
+      )
+      .join('')}</ol></section>`;
+  }
   return html;
 };
 
@@ -216,6 +265,13 @@ export const initMdClicks = (host: HTMLElement, openUrl: (url: string) => void):
           btn.classList.remove('is-done');
         }, 1200);
       }
+      return;
+    }
+    const fnLink = t.closest<HTMLElement>('a.md-fnref, a.md-fnback');
+    if (fnLink?.dataset.target) {
+      document
+        .getElementById(fnLink.dataset.target)
+        ?.scrollIntoView({ block: 'nearest' });
       return;
     }
     const link = t.closest<HTMLElement>('a.md-link');

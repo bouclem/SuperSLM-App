@@ -4,7 +4,7 @@ A desktop superapp for language models (LMs), built with Electron.
 
 ## Status
 
-v0.2.3 — LM SuperApp. Home dashboard (stat tiles), Models (HF sort + search, detail panel, GGUF downloads to
+v0.2.4 — LM SuperApp. Home dashboard (stat tiles), Models (HF sort + search, detail panel, GGUF downloads to
 `~/.lmsuperapp/models/`, local .gguf picker), Chat (custom model select,
 chat history in `~/.lmsuperapp/chats/` with rename/delete hover actions,
 per-chat sampling params + system prompt, streaming replies with a stop
@@ -39,7 +39,9 @@ button pulls the latest llama.cpp Windows release from GitHub into
 
 - `src/main.ts` — `BrowserWindow` (sandboxed, context isolation on, node
   integration off); IPC: `app:info`, `app:changelog`, `settings:get`,
-  `settings:patch`, `dialog:pickGguf`, `window:fullscreen`, `window:devtools`,
+  `settings:patch` / `settings:export` / `settings:import` (validated JSON
+  round-trip via save/open dialogs), `dialog:pickGguf`, `window:fullscreen`,
+  `window:devtools`,
   `models:list` / `models:detail` / `models:download` (proxies Hugging Face,
   streams files to disk, `models:progress` events), `backend:*`
 - `src/llamacpp.ts` — llama.cpp backend: locates `llama-server`, spawns it
@@ -48,8 +50,11 @@ button pulls the latest llama.cpp Windows release from GitHub into
 - `src/preload.ts` — exposes `window.lmsuperapp` via `contextBridge`
 - `src/renderer/api.ts` — typed wrappers over `window.lmsuperapp`
 - `src/renderer/core/` — `dom.ts` (byId, escapeHtml), `tabs.ts` (router +
-  `onTabOpen` lazy hooks), `markdown.ts`, `theme.ts` (apply + persist),
-  `debug.ts` (debug flag + recent-error log emitting `lmsuperapp:debug`)
+  `onTabOpen` lazy hooks), `markdown.ts` (md + KaTeX + footnotes + task/nested
+  lists), `highlight.ts` (highlight.js core + curated languages for fenced
+  code), `select.ts` (custom dropdown, arrow-key nav), `theme.ts` (apply +
+  persist), `debug.ts` (debug flag + recent-error log emitting
+  `lmsuperapp:debug`)
 - `src/renderer/views/` — `home.ts`, `models.ts`, `chat.ts`, `settings.ts` — each
   `mount(root)` renders markup into its tab section and wires its own events
 - `src/renderer/styles/` — `base.css` (theme vars, shell, sidebar, shared),
@@ -80,8 +85,8 @@ electron-builder (config in `package.json` → `build`) packages `out/`,
 `src/renderer/`, `src/backend/`, `docs/CHANGELOG.md` and the app icon into a
 NSIS installer. `.github/workflows/nightly.yml` runs nightly (cron + manual):
 skips when HEAD equals the last `nightly-*` tag, otherwise versions the build
-`0.2.0-nightly.<sha>`, builds the `.exe`, and publishes a GitHub prerelease
-tagged `nightly-<sha>`.
+`<package.json version>-nightly.<sha>`, builds the `.exe`, and publishes a
+GitHub prerelease tagged `nightly-<sha>`.
 
 ## Direction
 

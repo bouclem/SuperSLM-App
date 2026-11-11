@@ -31,8 +31,9 @@ jobs:
             echo "No new commits since $last — skipping nightly."
           else
             sha=$(git rev-parse --short HEAD)
+            base=$(node -p "require('./package.json').version")
             echo "tag=nightly-$sha" >> "$GITHUB_OUTPUT"
-            echo "ver=0.2.0-nightly.$sha" >> "$GITHUB_OUTPUT"
+            echo "ver=$base-nightly.$sha" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install dependencies

@@ -13,6 +13,12 @@ export const getSettings = (): Promise<LmSettings> => requireApi().getSettings()
 export const patchSettings = (patch: Partial<LmSettings>): Promise<LmSettings> =>
   requireApi().patchSettings(patch);
 
+export const exportSettings = (): Promise<{ path: string } | null> =>
+  requireApi().exportSettings();
+
+export const importSettings = (): Promise<LmSettings | null> =>
+  requireApi().importSettings();
+
 export const pickGguf = (): Promise<string[] | null> => requireApi().pickGguf();
 
 export const setFullscreen = (on: boolean): Promise<void> => requireApi().setFullscreen(on);
